@@ -19,12 +19,14 @@ const ACCEPT_INTERVAL: Duration = Duration::from_millis(50);
 const CH_RECV_YIELD: Duration = Duration::from_millis(50);
 const NET_RECV_YIELD: Duration = Duration::from_millis(50);
 
+static API_LISTEN_ADDR: &str = ":8585";
+
 fn can_queue_additional_tunnel(client: Uuid) -> predicate!((Uuid, Chunk)) {
     move |queued| queued.filter(|(id, _)| *id == client).count() <= CLIENT_RX_QUEUE_LEN_LIMIT
 }
 
 fn can_queue_additional_client() -> predicate!(Chunk) {
-    |queued| queued.map(|c| c.len()).sum::<usize>() <= CLIENT_TX_QUEUE_SZ_LIMIT
+    |queued| queued.map(Vec::len).sum::<usize>() <= CLIENT_TX_QUEUE_SZ_LIMIT
 }
 
 type Chunk = Vec<u8>;
@@ -253,6 +255,7 @@ impl Tunnel {
 
     fn try_close(&self) {
         let was_closed = self.closed.swap(true, atomic::Ordering::SeqCst);
+
         if !was_closed {
             debug!("closing tunnel");
             self.tunnel_ch.close();
