@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
+use std::collections::LinkedList;
 use std::sync::Arc;
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 struct State<T> {
-    queue: VecDeque<T>,
+    queue: LinkedList<T>,
     closed: bool,
 }
 
@@ -45,7 +45,7 @@ impl<T> Channel<T> {
         Channel {
             inner: Arc::new(Inner {
                 state: Mutex::new(State {
-                    queue: VecDeque::new(),
+                    queue: LinkedList::new(),
                     closed: false,
                 }),
                 condvar: Condvar::new(),
