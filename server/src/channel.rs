@@ -21,7 +21,7 @@ macro_rules! iterator {
 
 macro_rules! predicate {
     ($t:ty) => {
-        impl FnOnce(crate::channel::iterator!(&$t)) -> bool
+        impl Fn(crate::channel::iterator!(&$t)) -> bool
     };
 }
 
@@ -53,19 +53,20 @@ impl<T> Channel<T> {
         }
     }
 
-    pub fn send_predicate(&self, v: T, predicate: predicate!(T)) -> Result<(), SendError> {
+    pub fn send_when(&self, v: T, predicate: predicate!(T)) -> Result<(), SendError> {
         let mut state = self.inner.state.lock().unwrap();
         if state.closed {
             return Err(SendError);
         }
 
-        let queued: iterator!(&T) = &mut state.queue.iter();
-        if !predicate(queued) {
-            return Ok(());
-        }
+        state = self
+            .inner
+            .condvar
+            .wait_while(state, |state| !predicate(&mut state.queue.iter()))
+            .unwrap();
 
         state.queue.push_back(v);
-        self.inner.condvar.notify_one();
+        self.inner.condvar.notify_all();
         Ok(())
     }
 
@@ -79,6 +80,7 @@ impl<T> Channel<T> {
             }
 
             if let Some(v) = state.queue.pop_front() {
+                self.inner.condvar.notify_all();
                 return Ok(v);
             }
 

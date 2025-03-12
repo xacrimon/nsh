@@ -12,7 +12,7 @@ use std::time::Duration;
 use tracing::debug;
 use uuid::Uuid;
 
-const IOBUF_SZ: usize = 256;
+const CLIENT_IOBUF_SZ: usize = 256;
 const CLIENT_RX_QUEUE_LEN_LIMIT: usize = 16;
 const CLIENT_TX_QUEUE_SZ_LIMIT: usize = 4096;
 const ACCEPT_INTERVAL: Duration = Duration::from_millis(50);
@@ -110,7 +110,7 @@ impl Tunnel {
             .set_read_timeout(Some(NET_RECV_YIELD))
             .unwrap();
 
-        let mut read_buf = [0u8; IOBUF_SZ];
+        let mut read_buf = [0u8; CLIENT_IOBUF_SZ];
 
         loop {
             let n = match client_stream.read(&mut read_buf) {
@@ -131,7 +131,7 @@ impl Tunnel {
 
             let chunk = read_buf[..n].to_vec();
             let predicate = can_queue_additional_tunnel(client.id);
-            match self.tunnel_ch.send_predicate((client.id, chunk), predicate) {
+            match self.tunnel_ch.send_when((client.id, chunk), predicate) {
                 Ok(_) => (),
                 Err(SendError) => {
                     debug!("stopping due to tunnel rx disconnect");
@@ -159,8 +159,12 @@ impl Tunnel {
                 }
             };
 
-            let data = format!("{}: {:?}", client_id, chunk); // TODO: serialize message here
-            match tunnel_stream.write_all(data.as_bytes()) {
+            let message = protocol::Message::Data {
+                connection: client_id,
+                data: chunk,
+            };
+
+            match protocol::encode(&mut tunnel_stream, &message) {
                 Ok(_) => (),
                 Err(err) => {
                     debug!(
@@ -206,16 +210,9 @@ impl Tunnel {
             .set_read_timeout(Some(NET_RECV_YIELD))
             .unwrap();
 
-        let mut read_buf = [0u8; IOBUF_SZ];
-
         loop {
-            let n = match tunnel_stream.read(&mut read_buf) {
-                Ok(0) => {
-                    debug!("stopping because tunnel stream disconnected, doing shutdown");
-                    self.try_close();
-                    return;
-                }
-                Ok(n) => n,
+            let message = match protocol::decode(&mut tunnel_stream) {
+                Ok(message) => message,
                 Err(ref err) if err.kind() == io::ErrorKind::TimedOut && self.is_closed() => {
                     debug!("stopping due to exit signal");
                     return;
@@ -224,8 +221,12 @@ impl Tunnel {
                 Err(err) => panic!("{:?}", err),
             };
 
-            let chunk = read_buf[..n].to_vec();
-            let client_id: Uuid = Uuid::new_v4(); // TODO: deserialize message here
+            let (client_id, chunk) = if let protocol::Message::Data { connection, data } = message {
+                (connection, data)
+            } else {
+                panic!()
+            };
+
             let client = self
                 .clients
                 .lock()
@@ -236,7 +237,7 @@ impl Tunnel {
                 .unwrap();
 
             let predicate = can_queue_additional_client();
-            match client.ch.send_predicate(chunk, predicate) {
+            match client.ch.send_when(chunk, predicate) {
                 Ok(_) => (),
                 Err(SendError) => {
                     debug!("stopping due to client rx disconnect");
