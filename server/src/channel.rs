@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
-use std::iter;
 use std::sync::Arc;
-use std::sync::{Condvar, Mutex, MutexGuard};
+use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
 struct State<T> {
@@ -22,7 +21,7 @@ macro_rules! iterator {
 
 macro_rules! predicate {
     ($t:ty) => {
-        impl FnOnce(iterator!(&$t)) -> bool
+        impl FnOnce(crate::channel::iterator!(&$t)) -> bool
     };
 }
 

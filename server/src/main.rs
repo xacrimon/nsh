@@ -1,24 +1,23 @@
 mod channel;
 
 use anyhow::Result;
-use channel::{Channel, RecvTimeoutError, SendError, iterator, predicate};
+use channel::{Channel, RecvTimeoutError, SendError, predicate};
 use std::io::{self, Read, Write};
 use std::net::{self, TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, TryLockError, atomic};
 use std::sync::{Mutex, MutexGuard};
+use std::thread;
 use std::time::Duration;
-use std::{marker, thread};
 use tracing::debug;
 use uuid::Uuid;
 
 const IOBUF_SZ: usize = 256;
 const CLIENT_RX_QUEUE_LEN_LIMIT: usize = 16;
 const CLIENT_TX_QUEUE_SZ_LIMIT: usize = 4096;
-
 const ACCEPT_INTERVAL: Duration = Duration::from_millis(50);
-const CH_RECV_YIELD: Duration = Duration::from_secs(1);
-const NET_RECV_YIELD: Duration = Duration::from_secs(1);
+const CH_RECV_YIELD: Duration = Duration::from_millis(50);
+const NET_RECV_YIELD: Duration = Duration::from_millis(50);
 
 fn can_queue_additional_tunnel(client: Uuid) -> predicate!((Uuid, Chunk)) {
     move |queued| queued.filter(|(id, _)| *id == client).count() <= CLIENT_RX_QUEUE_LEN_LIMIT
