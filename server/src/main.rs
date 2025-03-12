@@ -130,10 +130,8 @@ impl Tunnel {
             };
 
             let chunk = read_buf[..n].to_vec();
-            match self
-                .tunnel_ch
-                .send_predicate((client.id, chunk), can_queue_additional_tunnel(client.id))
-            {
+            let predicate = can_queue_additional_tunnel(client.id);
+            match self.tunnel_ch.send_predicate((client.id, chunk), predicate) {
                 Ok(_) => (),
                 Err(SendError) => {
                     debug!("stopping due to tunnel rx disconnect");
@@ -237,10 +235,8 @@ impl Tunnel {
                 .find(|c| c.id == client_id)
                 .unwrap();
 
-            match client
-                .ch
-                .send_predicate(chunk, can_queue_additional_client())
-            {
+            let predicate = can_queue_additional_client();
+            match client.ch.send_predicate(chunk, predicate) {
                 Ok(_) => (),
                 Err(SendError) => {
                     debug!("stopping due to client rx disconnect");
